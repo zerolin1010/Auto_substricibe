@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  syncer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+        DATE: ${DATE:-unknown}
+    image: jellyseerr-moviepilot-syncer:latest
+    container_name: jellyseerr-moviepilot-syncer
+    restart: unless-stopped
+    environment:
+      # Jellyseerr 配置
+      - JELLY_URL=${JELLY_URL}
+      - JELLY_API_KEY=${JELLY_API_KEY}
+      - JELLY_FILTER=${JELLY_FILTER:-approved}
+      - JELLY_PAGE_SIZE=${JELLY_PAGE_SIZE:-50}
+
+      # MoviePilot 配置
+      - MP_URL=${MP_URL}
+      - MP_TOKEN=${MP_TOKEN}
+      - MP_AUTH_SCHEME=${MP_AUTH_SCHEME:-bearer}
+      - MP_RATE_LIMIT_PER_SEC=${MP_RATE_LIMIT_PER_SEC:-3}
+      - MP_DRY_RUN=${MP_DRY_RUN:-false}
+      - MP_TV_EPISODE_MODE=${MP_TV_EPISODE_MODE:-season}
+
+      # 存储配置
+      - STORE_TYPE=${STORE_TYPE:-sqlite}
+      - STORE_PATH=${STORE_PATH:-/app/data/syncer.db}
+
+      # 同步配置
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-5}
+      - ENABLE_RETRY=${ENABLE_RETRY:-true}
+      - MAX_RETRIES=${MAX_RETRIES:-3}
+
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    volumes:
+      - ./data:/app/data
+    command: ["-mode=daemon"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

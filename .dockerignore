@@ -1,0 +1,48 @@
+# Git
+.git/
+.gitignore
+.claude/
+
+# 构建产物
+build/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 数据和日志
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# 环境配置（重要！不要包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 测试
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# 文档（不需要在镜像中）
+*.md
+!README.md
+
+# 临时文件
+tmp/
+temp/
+get_mp_token.sh
+run.sh

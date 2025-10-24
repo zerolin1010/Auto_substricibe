@@ -1,0 +1,469 @@
+package core
+
+import (
+	"context"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/configs"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/jelly"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/mp"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/store"
+	"go.uber.org/zap"
+)
+
+// Syncer 同步器
+type Syncer struct {
+	cfg         *configs.Config
+	jellyClient *jelly.Client
+	mpClient    *mp.Client
+	store       store.Store
+	logger      *zap.Logger
+}
+
+// NewSyncer 创建同步器
+func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*Syncer, error) {
+	// 创建 Jellyseerr 客户端
+	jellyClient := jelly.NewClient(cfg.JellyURL, cfg.JellyAPIKey)
+
+	// 创建 MoviePilot 客户端
+	mpClient, err := mp.NewClient(mp.ClientConfig{
+		BaseURL:      cfg.MPURL,
+		Username:     cfg.MPUsername,
+		Password:     cfg.MPPassword,
+		AuthScheme:   cfg.MPAuthScheme,
+		RateLimitPS:  cfg.MPRateLimitPS,
+		MaxRetries:   cfg.MaxRetries,
+		DryRun:       cfg.MPDryRun,
+		TokenRefresh: cfg.MPTokenRefresh,
+	}, ctx)
+	if err != nil {
+		return nil, fmt.Errorf("create mp client: %w", err)
+	}
+
+	// 创建存储
+	var st store.Store
+	if cfg.StoreType == "sqlite" {
+		st, err = store.NewSQLiteStore(cfg.StorePath)
+		if err != nil {
+			return nil, fmt.Errorf("create store: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("unsupported store type: %s", cfg.StoreType)
+	}
+
+	return &Syncer{
+		cfg:         cfg,
+		jellyClient: jellyClient,
+		mpClient:    mpClient,
+		store:       st,
+		logger:      logger,
+	}, nil
+}
+
+// SyncOnce 执行一次同步
+func (s *Syncer) SyncOnce(ctx context.Context) error {
+	s.logger.Info("starting sync")
+
+	// 1. 从 Jellyseerr 获取已批准的请求
+	requests, err := s.jellyClient.FetchAllApprovedRequests(ctx, s.cfg.JellyPageSize)
+	if err != nil {
+		return fmt.Errorf("fetch approved requests: %w", err)
+	}
+
+	s.logger.Info("fetched requests from Jellyseerr", zap.Int("count", len(requests)))
+
+	// 2. 转换并保存到本地存储
+	for _, req := range requests {
+		if err := s.processRequest(ctx, req); err != nil {
+			s.logger.Error("process request failed",
+				zap.Int("request_id", req.ID),
+				zap.Error(err),
+			)
+			continue
+		}
+	}
+
+	// 3. 处理待同步的请求
+	if err := s.processPendingRequests(ctx); err != nil {
+		return fmt.Errorf("process pending requests: %w", err)
+	}
+
+	// 4. 打印统计信息
+	stats, err := s.store.GetStats()
+	if err != nil {
+		s.logger.Warn("get stats failed", zap.Error(err))
+	} else {
+		s.logger.Info("sync completed",
+			zap.Int("total", stats.TotalRequests),
+			zap.Int("pending", stats.PendingRequests),
+			zap.Int("synced", stats.SyncedRequests),
+			zap.Int("failed", stats.FailedRequests),
+		)
+	}
+
+	return nil
+}
+
+// processRequest 处理单个请求
+func (s *Syncer) processRequest(ctx context.Context, jellyReq *jelly.MediaRequestV2) error {
+	sourceRequestID := strconv.Itoa(jellyReq.ID)
+
+	// 检查是否已存在
+	existing, err := s.store.GetRequest(sourceRequestID)
+	if err != nil {
+		return fmt.Errorf("get request: %w", err)
+	}
+
+	if existing != nil && existing.Status == store.StatusSynced {
+		// 已同步，跳过
+		return nil
+	}
+
+	// 获取媒体详情（获取标题）
+	var title string
+	mediaType := "movie"
+	if jellyReq.IsMovie() {
+		mediaType = "movie"
+	} else if jellyReq.IsTV() {
+		mediaType = "tv"
+	}
+
+	details, err := s.jellyClient.GetMediaDetails(ctx, mediaType, jellyReq.Media.TMDBID)
+	if err != nil {
+		s.logger.Warn("get media details failed, using fallback",
+			zap.Int("tmdb_id", jellyReq.Media.TMDBID),
+			zap.Error(err),
+		)
+		title = fmt.Sprintf("TMDB-%d", jellyReq.Media.TMDBID)
+	} else {
+		title = details.GetTitle()
+	}
+
+	// 转换为本地请求
+	localReq := &store.Request{
+		SourceRequestID: sourceRequestID,
+		MediaType:       store.MediaType(mediaType),
+		TMDBID:          jellyReq.Media.TMDBID,
+		Title:           title,
+		Status:          store.StatusPending,
+		RequestedAt:     jellyReq.CreatedAt,
+	}
+
+	// 处理剧集季和集
+	if jellyReq.IsTV() && len(jellyReq.Seasons) > 0 {
+		seasons := []int{}
+		episodes := make(map[int][]int)
+
+		for _, season := range jellyReq.Seasons {
+			// 根据配置，可能排除特别季 S00
+			if season.SeasonNumber == 0 {
+				s.logger.Debug("skipping special season S00",
+					zap.String("title", title),
+				)
+				continue
+			}
+
+			seasons = append(seasons, season.SeasonNumber)
+
+			// 处理集
+			if len(season.Episodes) > 0 {
+				eps := []int{}
+				for _, ep := range season.Episodes {
+					eps = append(eps, ep.EpisodeNumber)
+				}
+				episodes[season.SeasonNumber] = eps
+			}
+		}
+
+		if err := localReq.SetSeasons(seasons); err != nil {
+			return fmt.Errorf("set seasons: %w", err)
+		}
+		if len(episodes) > 0 {
+			if err := localReq.SetEpisodes(episodes); err != nil {
+				return fmt.Errorf("set episodes: %w", err)
+			}
+		}
+	}
+
+	// 保存到存储
+	if err := s.store.SaveRequest(localReq); err != nil {
+		return fmt.Errorf("save request: %w", err)
+	}
+
+	s.logger.Debug("saved request",
+		zap.String("source_request_id", sourceRequestID),
+		zap.String("title", title),
+		zap.String("type", string(localReq.MediaType)),
+	)
+
+	return nil
+}
+
+// processPendingRequests 处理待同步的请求
+func (s *Syncer) processPendingRequests(ctx context.Context) error {
+	// 获取待处理请求
+	requests, err := s.store.ListPendingRequests(100)
+	if err != nil {
+		return fmt.Errorf("list pending requests: %w", err)
+	}
+
+	s.logger.Info("processing pending requests", zap.Int("count", len(requests)))
+
+	for _, req := range requests {
+		if err := s.syncToMoviePilot(ctx, req); err != nil {
+			s.logger.Error("sync to MoviePilot failed",
+				zap.String("source_request_id", req.SourceRequestID),
+				zap.String("title", req.Title),
+				zap.Error(err),
+			)
+
+			// 保存错误信息
+			link := &store.MPLink{
+				SourceRequestID: req.SourceRequestID,
+				State:           store.StatusFailed,
+				LastError:       sanitizeError(err),
+			}
+			if err := s.store.SaveMPLink(link); err != nil {
+				s.logger.Error("save mp link failed", zap.Error(err))
+			}
+
+			// 更新请求状态
+			if err := s.store.UpdateRequestStatus(req.SourceRequestID, store.StatusFailed); err != nil {
+				s.logger.Error("update request status failed", zap.Error(err))
+			}
+
+			continue
+		}
+
+		// 更新请求状态为已同步
+		if err := s.store.UpdateRequestStatus(req.SourceRequestID, store.StatusSynced); err != nil {
+			s.logger.Error("update request status failed", zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+// syncToMoviePilot 同步到 MoviePilot
+func (s *Syncer) syncToMoviePilot(ctx context.Context, req *store.Request) error {
+	// 检查是否已有 MP 链接
+	existing, err := s.store.GetMPLink(req.SourceRequestID)
+	if err != nil {
+		return fmt.Errorf("get mp link: %w", err)
+	}
+
+	if existing != nil && existing.State == store.StatusSynced {
+		// 已同步
+		return nil
+	}
+
+	// 电影：直接创建订阅
+	if req.MediaType == store.MediaTypeMovie {
+		return s.subscribeMovie(ctx, req)
+	}
+
+	// 剧集：按季或按集创建订阅
+	if req.MediaType == store.MediaTypeTV {
+		return s.subscribeTV(ctx, req)
+	}
+
+	return fmt.Errorf("unknown media type: %s", req.MediaType)
+}
+
+// subscribeMovie 订阅电影
+func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
+	mpReq := &mp.SubscribeRequest{
+		Name:   req.Title,
+		Type:   "电影", // MoviePilot 需要中文类型
+		TMDBID: req.TMDBID,
+	}
+
+	resp, err := s.mpClient.Subscribe(ctx, mpReq)
+	if err != nil {
+		return fmt.Errorf("subscribe movie: %w", err)
+	}
+
+	// 保存链接
+	subscribeID := ""
+	if resp.Data != nil {
+		if resp.Data.ID > 0 {
+			subscribeID = strconv.Itoa(resp.Data.ID)
+		} else if resp.Data.SubscribeID > 0 {
+			subscribeID = strconv.Itoa(resp.Data.SubscribeID)
+		}
+	}
+
+	link := &store.MPLink{
+		SourceRequestID: req.SourceRequestID,
+		MPSubscribeID:   subscribeID,
+		State:           store.StatusSynced,
+	}
+
+	if err := s.store.SaveMPLink(link); err != nil {
+		return fmt.Errorf("save mp link: %w", err)
+	}
+
+	s.logger.Info("subscribed movie to MoviePilot",
+		zap.String("title", req.Title),
+		zap.Int("tmdb_id", req.TMDBID),
+		zap.String("subscribe_id", subscribeID),
+	)
+
+	return nil
+}
+
+// subscribeTV 订阅剧集
+func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
+	seasons, err := req.GetSeasons()
+	if err != nil {
+		return fmt.Errorf("get seasons: %w", err)
+	}
+
+	episodes, err := req.GetEpisodes()
+	if err != nil {
+		return fmt.Errorf("get episodes: %w", err)
+	}
+
+	// 根据配置决定按季还是按集
+	if s.cfg.MPTVEpisodeMode == "season" {
+		// 按季订阅
+		for _, season := range seasons {
+			mpReq := &mp.SubscribeRequest{
+				Name:   req.Title,
+				Type:   "电视剧", // MoviePilot 需要中文类型
+				TMDBID: req.TMDBID,
+				Season: season,
+			}
+
+			resp, err := s.mpClient.Subscribe(ctx, mpReq)
+			if err != nil {
+				return fmt.Errorf("subscribe season %d: %w", season, err)
+			}
+
+			s.logger.Info("subscribed TV season to MoviePilot",
+				zap.String("title", req.Title),
+				zap.Int("tmdb_id", req.TMDBID),
+				zap.Int("season", season),
+			)
+
+			// 保存链接（仅保存第一个）
+			if season == seasons[0] {
+				subscribeID := ""
+				if resp.Data != nil {
+					if resp.Data.ID > 0 {
+						subscribeID = strconv.Itoa(resp.Data.ID)
+					} else if resp.Data.SubscribeID > 0 {
+						subscribeID = strconv.Itoa(resp.Data.SubscribeID)
+					}
+				}
+
+				link := &store.MPLink{
+					SourceRequestID: req.SourceRequestID,
+					MPSubscribeID:   subscribeID,
+					State:           store.StatusSynced,
+				}
+
+				if err := s.store.SaveMPLink(link); err != nil {
+					return fmt.Errorf("save mp link: %w", err)
+				}
+			}
+		}
+	} else if s.cfg.MPTVEpisodeMode == "episode" {
+		// 按集订阅
+		for season, eps := range episodes {
+			if len(eps) > 0 {
+				mpReq := &mp.SubscribeRequest{
+					Name:     req.Title,
+					Type:     "电视剧", // MoviePilot 需要中文类型
+					TMDBID:   req.TMDBID,
+					Season:   season,
+					Episodes: eps,
+				}
+
+				resp, err := s.mpClient.Subscribe(ctx, mpReq)
+				if err != nil {
+					return fmt.Errorf("subscribe season %d episodes: %w", season, err)
+				}
+
+				s.logger.Info("subscribed TV episodes to MoviePilot",
+					zap.String("title", req.Title),
+					zap.Int("tmdb_id", req.TMDBID),
+					zap.Int("season", season),
+					zap.Ints("episodes", eps),
+				)
+
+				// 保存链接（仅保存第一个）
+				if season == seasons[0] {
+					subscribeID := ""
+					if resp.Data != nil {
+						if resp.Data.ID > 0 {
+							subscribeID = strconv.Itoa(resp.Data.ID)
+						} else if resp.Data.SubscribeID > 0 {
+							subscribeID = strconv.Itoa(resp.Data.SubscribeID)
+						}
+					}
+
+					link := &store.MPLink{
+						SourceRequestID: req.SourceRequestID,
+						MPSubscribeID:   subscribeID,
+						State:           store.StatusSynced,
+					}
+
+					if err := s.store.SaveMPLink(link); err != nil {
+						return fmt.Errorf("save mp link: %w", err)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// Close 关闭同步器
+func (s *Syncer) Close() error {
+	return s.store.Close()
+}
+
+// RunDaemon 以守护进程模式运行
+func (s *Syncer) RunDaemon(ctx context.Context) error {
+	s.logger.Info("starting daemon mode",
+		zap.Int("interval_minutes", s.cfg.SyncInterval),
+	)
+
+	ticker := time.NewTicker(time.Duration(s.cfg.SyncInterval) * time.Minute)
+	defer ticker.Stop()
+
+	// 立即执行一次
+	if err := s.SyncOnce(ctx); err != nil {
+		s.logger.Error("sync failed", zap.Error(err))
+	}
+
+	// 定时执行
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("daemon stopped")
+			return ctx.Err()
+		case <-ticker.C:
+			if err := s.SyncOnce(ctx); err != nil {
+				s.logger.Error("sync failed", zap.Error(err))
+			}
+		}
+	}
+}
+
+// sanitizeError 清理错误信息（移除敏感信息）
+func sanitizeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	// 这里可以添加更多的清理逻辑
+	msg := err.Error()
+	if len(msg) > 500 {
+		msg = msg[:500] + "..."
+	}
+	return msg
+}
