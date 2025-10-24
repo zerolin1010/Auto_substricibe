@@ -10,7 +10,8 @@ func TestLoad(t *testing.T) {
 	os.Setenv("JELLY_URL", "https://test.com")
 	os.Setenv("JELLY_API_KEY", "test-key")
 	os.Setenv("MP_URL", "http://test.com")
-	os.Setenv("MP_TOKEN", "test-token")
+	os.Setenv("MP_USERNAME", "test-user")
+	os.Setenv("MP_PASSWORD", "test-pass")
 
 	cfg, err := Load()
 	if err != nil {
@@ -38,7 +39,8 @@ func TestValidate(t *testing.T) {
 				JellyURL:        "https://test.com",
 				JellyAPIKey:     "key",
 				MPURL:           "http://test.com",
-				MPToken:         "token",
+				MPUsername:      "user",
+				MPPassword:      "pass",
 				MPAuthScheme:    "bearer",
 				MPTVEpisodeMode: "season",
 				StoreType:       "sqlite",
@@ -50,7 +52,8 @@ func TestValidate(t *testing.T) {
 			cfg: &Config{
 				JellyAPIKey: "key",
 				MPURL:       "http://test.com",
-				MPToken:     "token",
+				MPUsername:  "user",
+				MPPassword:  "pass",
 			},
 			wantErr: true,
 		},
@@ -60,7 +63,8 @@ func TestValidate(t *testing.T) {
 				JellyURL:     "https://test.com",
 				JellyAPIKey:  "key",
 				MPURL:        "http://test.com",
-				MPToken:      "token",
+				MPUsername:   "user",
+				MPPassword:   "pass",
 				MPAuthScheme: "invalid",
 			},
 			wantErr: true,
@@ -80,7 +84,7 @@ func TestValidate(t *testing.T) {
 func TestMaskSensitive(t *testing.T) {
 	cfg := &Config{
 		JellyAPIKey: "1234567890abcdef",
-		MPToken:     "abcdefghijklmnop",
+		MPPassword:  "abcdefghijklmnop",
 	}
 
 	masked := cfg.MaskSensitive()
@@ -89,7 +93,7 @@ func TestMaskSensitive(t *testing.T) {
 		t.Error("JellyAPIKey should be masked")
 	}
 
-	if masked["mp_token"] == cfg.MPToken {
-		t.Error("MPToken should be masked")
+	if masked["mp_password"] == cfg.MPPassword {
+		t.Error("MPPassword should be masked")
 	}
 }
