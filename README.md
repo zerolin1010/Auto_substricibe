@@ -1,5 +1,9 @@
 # Jellyseerr → MoviePilot 自动订阅同步器
 
+[![Docker Hub](https://img.shields.io/docker/v/zerolin1010/jellyseerr-moviepilot-syncer?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/zerolin1010/jellyseerr-moviepilot-syncer)
+[![Docker Pulls](https://img.shields.io/docker/pulls/zerolin1010/jellyseerr-moviepilot-syncer)](https://hub.docker.com/r/zerolin1010/jellyseerr-moviepilot-syncer)
+[![Docker Image Size](https://img.shields.io/docker/image-size/zerolin1010/jellyseerr-moviepilot-syncer/latest)](https://hub.docker.com/r/zerolin1010/jellyseerr-moviepilot-syncer)
+
 一个使用 Go 编写的可靠服务，自动将 Jellyseerr/Overseerr 中已批准的请求同步到 MoviePilot，触发其检索和下载流程。
 
 ## ✨ 特性
@@ -62,7 +66,7 @@ docker-compose logs -f
 
 ```bash
 # 拉取镜像
-docker pull your-dockerhub-username/jellyseerr-moviepilot-syncer:latest
+docker pull zerolin1010/jellyseerr-moviepilot-syncer:latest
 
 # 运行
 docker run -d \
@@ -73,7 +77,7 @@ docker run -d \
   -e MP_USERNAME=your-username \
   -e MP_PASSWORD=your-password \
   -v ./data:/app/data \
-  your-dockerhub-username/jellyseerr-moviepilot-syncer:latest
+  zerolin1010/jellyseerr-moviepilot-syncer:latest
 ```
 
 ### 使用源码构建

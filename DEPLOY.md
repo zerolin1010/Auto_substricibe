@@ -1,6 +1,22 @@
 # 部署指南
 
-## 📦 Docker 镜像构建和发布
+## 📦 Docker 镜像
+
+### 使用预构建镜像（推荐）
+
+官方镜像已发布到 Docker Hub：`zerolin1010/jellyseerr-moviepilot-syncer`
+
+直接使用 Docker Compose 或 Docker 命令拉取镜像即可：
+
+```bash
+# 使用 Docker Compose
+docker-compose up -d
+
+# 或直接拉取镜像
+docker pull zerolin1010/jellyseerr-moviepilot-syncer:latest
+```
+
+## 🔨 自定义构建（开发者）
 
 ### 前置准备
 
@@ -11,7 +27,11 @@
    docker login
    ```
 
-### 方式 1: 使用自动化脚本（推荐）
+### 方式 1: 使用 GitHub Actions（推荐）
+
+GitHub Actions 会自动构建和发布 Docker 镜像，详见 [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md)
+
+### 方式 2: 使用自动化脚本
 
 ```bash
 # 1. 设置你的 Docker Hub 用户名
@@ -29,26 +49,26 @@ export VERSION=v1.0.0
 - 询问是否推送到 Docker Hub
 - 打标签为 `latest` 和指定版本
 
-### 方式 2: 手动构建和发布
+### 方式 3: 手动构建和发布
 
 ```bash
 # 1. 构建镜像
-docker build -t your-username/jellyseerr-moviepilot-syncer:latest .
+docker build -t zerolin1010/jellyseerr-moviepilot-syncer:latest .
 
 # 2. 打标签
-docker tag your-username/jellyseerr-moviepilot-syncer:latest \
-           your-username/jellyseerr-moviepilot-syncer:v1.0.0
+docker tag zerolin1010/jellyseerr-moviepilot-syncer:latest \
+           zerolin1010/jellyseerr-moviepilot-syncer:v1.0.0
 
 # 3. 推送到 Docker Hub
-docker push your-username/jellyseerr-moviepilot-syncer:latest
-docker push your-username/jellyseerr-moviepilot-syncer:v1.0.0
+docker push zerolin1010/jellyseerr-moviepilot-syncer:latest
+docker push zerolin1010/jellyseerr-moviepilot-syncer:v1.0.0
 ```
 
 ### 验证镜像
 
 ```bash
 # 拉取镜像
-docker pull your-username/jellyseerr-moviepilot-syncer:latest
+docker pull zerolin1010/jellyseerr-moviepilot-syncer:latest
 
 # 查看镜像信息
 docker images | grep jellyseerr-moviepilot-syncer

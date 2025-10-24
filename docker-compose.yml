@@ -2,14 +2,7 @@ version: '3.8'
 
 services:
   syncer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        VERSION: ${VERSION:-dev}
-        COMMIT: ${COMMIT:-unknown}
-        DATE: ${DATE:-unknown}
-    image: jellyseerr-moviepilot-syncer:latest
+    image: zerolin1010/jellyseerr-moviepilot-syncer:latest
     container_name: jellyseerr-moviepilot-syncer
     restart: unless-stopped
     environment:
@@ -21,11 +14,13 @@ services:
 
       # MoviePilot 配置
       - MP_URL=${MP_URL}
-      - MP_TOKEN=${MP_TOKEN}
+      - MP_USERNAME=${MP_USERNAME}
+      - MP_PASSWORD=${MP_PASSWORD}
       - MP_AUTH_SCHEME=${MP_AUTH_SCHEME:-bearer}
       - MP_RATE_LIMIT_PER_SEC=${MP_RATE_LIMIT_PER_SEC:-3}
       - MP_DRY_RUN=${MP_DRY_RUN:-false}
       - MP_TV_EPISODE_MODE=${MP_TV_EPISODE_MODE:-season}
+      - MP_TOKEN_REFRESH_HOURS=${MP_TOKEN_REFRESH_HOURS:-24}
 
       # 存储配置
       - STORE_TYPE=${STORE_TYPE:-sqlite}
