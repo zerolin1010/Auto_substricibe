@@ -195,6 +195,17 @@ make docker-build       # 构建 Docker 镜像
 
 ### 构建并发布 Docker 镜像
 
+#### 方式 1: 使用 GitHub Actions（推荐）
+
+最简单的方式是使用 GitHub Actions 自动构建和发布：
+
+1. 在 GitHub 仓库设置中配置 Docker Hub Secrets
+2. 推送代码或创建标签即可自动构建
+
+详细步骤请参考 [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md)
+
+#### 方式 2: 本地手动构建
+
 ```bash
 # 设置 Docker Hub 用户名
 export DOCKER_USERNAME=your-dockerhub-username
