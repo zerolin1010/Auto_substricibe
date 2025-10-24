@@ -7,13 +7,7 @@ RUN apk add --no-cache git make gcc musl-dev
 # 设置工作目录
 WORKDIR /build
 
-# 复制 go mod 文件
-COPY go.mod go.sum ./
-
-# 下载依赖
-RUN go mod download
-
-# 复制源代码
+# 复制所有源代码（包括 vendor 目录）
 COPY . .
 
 # 构建
@@ -22,6 +16,7 @@ ARG COMMIT=unknown
 ARG DATE=unknown
 
 RUN CGO_ENABLED=1 GOOS=linux go build \
+    -mod=vendor \
     -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE} -s -w" \
     -o syncer \
     ./cmd/syncer

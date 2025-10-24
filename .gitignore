@@ -15,9 +15,6 @@
 coverage.txt
 coverage.html
 
-# 依赖
-vendor/
-
 # 环境配置
 .env
 .env.local
