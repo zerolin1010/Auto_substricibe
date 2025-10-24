@@ -56,7 +56,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "初始化日志失败: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer func() {
+		_ = logger.Sync() // 忽略 sync 错误
+	}()
 
 	// 创建上下文（需要在创建同步器之前）
 	ctx, cancel := context.WithCancel(context.Background())
