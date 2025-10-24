@@ -43,8 +43,12 @@ WORKDIR /app
 # 从构建阶段复制二进制文件
 COPY --from=builder /build/syncer /app/syncer
 
-# 创建数据目录
+# 复制启动脚本
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# 创建数据目录并设置权限
 RUN mkdir -p /app/data && \
+    chmod +x /app/docker-entrypoint.sh && \
     chown -R syncer:syncer /app
 
 # 切换到非 root 用户
@@ -55,7 +59,7 @@ HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
     CMD pgrep syncer || exit 1
 
 # 入口点
-ENTRYPOINT ["/app/syncer"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
 # 默认命令
-CMD ["-mode=daemon"]
+CMD ["/app/syncer", "-mode=daemon"]
