@@ -1,8 +1,11 @@
 # 构建阶段
-FROM golang:1.23-alpine AS builder
+FROM golang:alpine AS builder
 
 # 安装必要工具
 RUN apk add --no-cache git make gcc musl-dev
+
+# 允许 Go 自动下载匹配的工具链版本
+ENV GOTOOLCHAIN=auto
 
 # 设置工作目录
 WORKDIR /build
@@ -15,7 +18,7 @@ ARG VERSION=dev
 ARG COMMIT=unknown
 ARG DATE=unknown
 
-RUN CGO_ENABLED=1 GOOS=linux go build \
+RUN CGO_ENABLED=1 GOOS=linux go build -v \
     -mod=vendor \
     -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE} -s -w" \
     -o syncer \
