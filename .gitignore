@@ -6,7 +6,8 @@
 *.dll
 *.so
 *.dylib
-syncer
+/syncer
+/build/syncer
 
 # 测试文件
 *.test
