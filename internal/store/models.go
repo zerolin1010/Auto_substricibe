@@ -31,6 +31,7 @@ type Request struct {
 	MediaType       MediaType  `json:"media_type"`
 	TMDBID          int        `json:"tmdb_id"`
 	Title           string     `json:"title"`
+	PosterPath      string     `json:"poster_path"` // TMDB 海报路径
 	SeasonsJSON     string     `json:"seasons_json"`  // JSON 数组，如 [1,2,3]
 	EpisodesJSON    string     `json:"episodes_json"` // JSON 对象，如 {"1":[1,2,3]}
 	Status          SyncStatus `json:"status"`

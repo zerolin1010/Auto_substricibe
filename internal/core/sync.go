@@ -139,8 +139,9 @@ func (s *Syncer) processRequest(ctx context.Context, jellyReq *jelly.MediaReques
 		return nil
 	}
 
-	// 获取媒体详情（获取标题）
+	// 获取媒体详情（获取标题和海报）
 	var title string
+	var posterPath string
 	mediaType := "movie"
 	if jellyReq.IsMovie() {
 		mediaType = "movie"
@@ -157,6 +158,7 @@ func (s *Syncer) processRequest(ctx context.Context, jellyReq *jelly.MediaReques
 		title = fmt.Sprintf("TMDB-%d", jellyReq.Media.TMDBID)
 	} else {
 		title = details.GetTitle()
+		posterPath = details.PosterPath
 	}
 
 	// 转换为本地请求
@@ -165,6 +167,7 @@ func (s *Syncer) processRequest(ctx context.Context, jellyReq *jelly.MediaReques
 		MediaType:       store.MediaType(mediaType),
 		TMDBID:          jellyReq.Media.TMDBID,
 		Title:           title,
+		PosterPath:      posterPath,
 		Status:          store.StatusPending,
 		RequestedAt:     jellyReq.CreatedAt,
 	}
@@ -346,7 +349,7 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
 		s.logger.Debug("Sending telegram notification for movie", zap.String("title", req.Title))
-		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
+		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
 	} else {
 		if s.telegram == nil {
 			s.logger.Debug("Telegram bot not initialized, skipping notification")
@@ -480,7 +483,7 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
 		s.logger.Debug("Sending telegram notification for TV", zap.String("title", req.Title))
-		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
+		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
 	} else {
 		if s.telegram == nil {
 			s.logger.Debug("Telegram bot not initialized, skipping notification")
