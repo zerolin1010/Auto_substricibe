@@ -354,6 +354,16 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 		return fmt.Errorf("subscribe movie: %w", err)
 	}
 
+	// 检查是否为"已存在"响应
+	alreadyExists := resp.IsAlreadyExists()
+	if alreadyExists {
+		s.logger.Info("movie already exists in library",
+			zap.String("title", req.Title),
+			zap.Int("tmdb_id", req.TMDBID),
+			zap.String("message", resp.Message),
+		)
+	}
+
 	// 保存链接
 	subscribeID := ""
 	if resp.Data != nil {
@@ -374,30 +384,53 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 		return fmt.Errorf("save mp link: %w", err)
 	}
 
-	s.logger.Info("subscribed movie to MoviePilot",
-		zap.String("title", req.Title),
-		zap.Int("tmdb_id", req.TMDBID),
-		zap.String("subscribe_id", subscribeID),
-	)
+	if !alreadyExists {
+		s.logger.Info("subscribed movie to MoviePilot",
+			zap.String("title", req.Title),
+			zap.Int("tmdb_id", req.TMDBID),
+			zap.String("subscribe_id", subscribeID),
+		)
+	}
 
 	// 保存到跟踪表
 	now := time.Now()
+	var trackingStatus store.TrackingStatus
+	if alreadyExists {
+		// 已存在的影片直接标记为已入库
+		trackingStatus = store.TrackingTransferred
+	} else {
+		trackingStatus = store.TrackingSubscribed
+	}
+
 	tracking := &store.SubscriptionTracking{
 		SourceRequestID: req.SourceRequestID,
 		TMDBID:          req.TMDBID,
 		Title:           req.Title,
 		MediaType:       req.MediaType,
-		SubscribeStatus: store.TrackingSubscribed,
+		SubscribeStatus: trackingStatus,
 		SubscribeTime:   &now,
 	}
+
+	// 如果已存在，也设置 TransferTime
+	if alreadyExists {
+		tracking.TransferTime = &now
+	}
+
 	if err := s.store.SaveTracking(tracking); err != nil {
 		s.logger.Warn("Failed to save tracking", zap.Error(err))
 	}
 
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
-		s.logger.Debug("Sending telegram notification for movie", zap.String("title", req.Title))
-		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		if alreadyExists {
+			// 发送"已在媒体库"通知
+			s.logger.Debug("Sending 'already exists' notification", zap.String("title", req.Title))
+			s.telegram.NotifyAlreadyExists(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		} else {
+			// 发送普通订阅通知
+			s.logger.Debug("Sending telegram notification for movie", zap.String("title", req.Title))
+			s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		}
 	} else {
 		if s.telegram == nil {
 			s.logger.Debug("Telegram bot not initialized, skipping notification")
@@ -421,6 +454,9 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 		return fmt.Errorf("get episodes: %w", err)
 	}
 
+	// 跟踪是否有季已存在
+	var alreadyExists bool
+
 	// 根据配置决定按季还是按集
 	if s.cfg.MPTVEpisodeMode == "season" {
 		// 按季订阅
@@ -437,11 +473,23 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 				return fmt.Errorf("subscribe season %d: %w", season, err)
 			}
 
-			s.logger.Info("subscribed TV season to MoviePilot",
-				zap.String("title", req.Title),
-				zap.Int("tmdb_id", req.TMDBID),
-				zap.Int("season", season),
-			)
+			// 检查是否已存在（检查第一季）
+			if season == seasons[0] && resp.IsAlreadyExists() {
+				alreadyExists = true
+				s.logger.Info("TV show already exists in library",
+					zap.String("title", req.Title),
+					zap.Int("tmdb_id", req.TMDBID),
+					zap.String("message", resp.Message),
+				)
+			}
+
+			if !alreadyExists {
+				s.logger.Info("subscribed TV season to MoviePilot",
+					zap.String("title", req.Title),
+					zap.Int("tmdb_id", req.TMDBID),
+					zap.Int("season", season),
+				)
+			}
 
 			// 保存链接（仅保存第一个）
 			if season == seasons[0] {
@@ -482,12 +530,24 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 					return fmt.Errorf("subscribe season %d episodes: %w", season, err)
 				}
 
-				s.logger.Info("subscribed TV episodes to MoviePilot",
-					zap.String("title", req.Title),
-					zap.Int("tmdb_id", req.TMDBID),
-					zap.Int("season", season),
-					zap.Ints("episodes", eps),
-				)
+				// 检查是否已存在（检查第一季）
+				if season == seasons[0] && resp.IsAlreadyExists() {
+					alreadyExists = true
+					s.logger.Info("TV show already exists in library",
+						zap.String("title", req.Title),
+						zap.Int("tmdb_id", req.TMDBID),
+						zap.String("message", resp.Message),
+					)
+				}
+
+				if !alreadyExists {
+					s.logger.Info("subscribed TV episodes to MoviePilot",
+						zap.String("title", req.Title),
+						zap.Int("tmdb_id", req.TMDBID),
+						zap.Int("season", season),
+						zap.Ints("episodes", eps),
+					)
+				}
 
 				// 保存链接（仅保存第一个）
 				if season == seasons[0] {
@@ -516,22 +576,43 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 
 	// 保存到跟踪表
 	now := time.Now()
+	var trackingStatus store.TrackingStatus
+	if alreadyExists {
+		// 已存在的剧集直接标记为已入库
+		trackingStatus = store.TrackingTransferred
+	} else {
+		trackingStatus = store.TrackingSubscribed
+	}
+
 	tracking := &store.SubscriptionTracking{
 		SourceRequestID: req.SourceRequestID,
 		TMDBID:          req.TMDBID,
 		Title:           req.Title,
 		MediaType:       req.MediaType,
-		SubscribeStatus: store.TrackingSubscribed,
+		SubscribeStatus: trackingStatus,
 		SubscribeTime:   &now,
 	}
+
+	// 如果已存在，也设置 TransferTime
+	if alreadyExists {
+		tracking.TransferTime = &now
+	}
+
 	if err := s.store.SaveTracking(tracking); err != nil {
 		s.logger.Warn("Failed to save tracking", zap.Error(err))
 	}
 
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
-		s.logger.Debug("Sending telegram notification for TV", zap.String("title", req.Title))
-		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		if alreadyExists {
+			// 发送"已在媒体库"通知
+			s.logger.Debug("Sending 'already exists' notification for TV", zap.String("title", req.Title))
+			s.telegram.NotifyAlreadyExists(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		} else {
+			// 发送普通订阅通知
+			s.logger.Debug("Sending telegram notification for TV", zap.String("title", req.Title))
+			s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID, req.PosterPath)
+		}
 	} else {
 		if s.telegram == nil {
 			s.logger.Debug("Telegram bot not initialized, skipping notification")

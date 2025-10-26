@@ -47,6 +47,43 @@ func (b *Bot) NotifySubscribed(title, mediaType string, tmdbID int, posterPath s
 	}
 }
 
+// NotifyAlreadyExists 媒体已存在通知（带图片）
+func (b *Bot) NotifyAlreadyExists(title, mediaType string, tmdbID int, posterPath string) {
+	if !b.enabled {
+		return
+	}
+
+	caption := fmt.Sprintf(
+		"ℹ️ <b>媒体已在库中</b>\n\n"+
+			"📺 %s\n"+
+			"🏷️ 类型: %s\n"+
+			"🆔 TMDB ID: %d\n"+
+			"💡 该影片已存在于媒体库，无需重复下载\n"+
+			"⏰ %s",
+		html.EscapeString(title),
+		getMediaTypeEmoji(mediaType),
+		tmdbID,
+		time.Now().Format("2006-01-02 15:04:05"),
+	)
+
+	// 如果有海报，发送图片消息
+	if posterPath != "" {
+		imageURL := fmt.Sprintf("https://image.tmdb.org/t/p/w500%s", posterPath)
+		b.logger.Info("Sending 'already exists' notification with poster",
+			zap.String("title", title),
+			zap.String("poster_path", posterPath),
+		)
+		b.sendPhotoAsync(imageURL, caption)
+	} else {
+		// 没有海报，发送纯文本
+		b.logger.Info("Sending 'already exists' notification without poster",
+			zap.String("title", title),
+			zap.Int("tmdb_id", tmdbID),
+		)
+		b.SendMessageAsync(caption)
+	}
+}
+
 // sendPhotoAsync 异步发送图片消息
 func (b *Bot) sendPhotoAsync(photoURL, caption string) {
 	go func() {

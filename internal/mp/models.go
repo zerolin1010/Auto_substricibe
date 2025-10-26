@@ -21,6 +21,41 @@ type SubscribeResponse struct {
 	Code    int            `json:"code,omitempty"`
 }
 
+// IsAlreadyExists 判断是否为"已存在"响应
+func (r *SubscribeResponse) IsAlreadyExists() bool {
+	if !r.Success || r.Message == "" {
+		return false
+	}
+	// 检查消息中是否包含"已存在"、"已完成"、"已在媒体库"等关键词
+	keywords := []string{
+		"已完成订阅",
+		"已存在",
+		"已在媒体库",
+		"already exists",
+		"already in library",
+	}
+	for _, keyword := range keywords {
+		if contains(r.Message, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// 辅助函数
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // SubscribeData 订阅数据
 type SubscribeData struct {
 	ID          int `json:"id,omitempty"` // MoviePilot 返回的是数字
