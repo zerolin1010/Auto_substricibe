@@ -94,6 +94,23 @@ func login(ctx context.Context, baseURL, username, password string) (string, err
 		return "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// 打印完整响应
+	fmt.Printf("完整登录响应:\n")
+	var prettyJSON map[string]interface{}
+	if err := json.Unmarshal(body, &prettyJSON); err == nil {
+		formatted, _ := json.MarshalIndent(prettyJSON, "", "  ")
+		fmt.Printf("%s\n\n", string(formatted))
+	}
+
+	// 检查 Set-Cookie 响应头
+	if cookies := resp.Cookies(); len(cookies) > 0 {
+		fmt.Printf("收到的 Cookies:\n")
+		for _, cookie := range cookies {
+			fmt.Printf("  %s = %s\n", cookie.Name, cookie.Value)
+		}
+		fmt.Println()
+	}
+
 	var result struct {
 		AccessToken string `json:"access_token"`
 	}

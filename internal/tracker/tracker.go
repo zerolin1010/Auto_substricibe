@@ -54,8 +54,11 @@ func (t *Tracker) Start() error {
 
 	// 启动 SSE 监听器（如果启用）
 	if t.cfg.TrackerSSEEnabled {
+		t.logger.Warn("SSE is enabled but MP API requires resource_token which is not available via login API. SSE will likely fail with 403 errors. Consider disabling SSE (TRACKER_SSE_ENABLED=false) and use polling only.")
 		t.wg.Add(1)
 		go t.runSSEListener()
+	} else {
+		t.logger.Info("SSE disabled, using polling only")
 	}
 
 	// 启动轮询检查器
