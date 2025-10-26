@@ -45,6 +45,11 @@ type ClientConfig struct {
 	TokenRefresh int  // Token 刷新间隔（小时）
 }
 
+// GetToken 获取当前 Token
+func (c *Client) GetToken(ctx context.Context) (string, error) {
+	return c.tokenManager.GetToken(ctx)
+}
+
 // NewClient 创建客户端
 func NewClient(cfg ClientConfig, ctx context.Context) (*Client, error) {
 	// 设置速率限制器

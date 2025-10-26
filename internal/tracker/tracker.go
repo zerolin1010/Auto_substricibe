@@ -3,6 +3,7 @@ package tracker
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,23 +80,24 @@ func (t *Tracker) runSSEListener() {
 
 	t.logger.Info("SSE listener started")
 
-	// TODO: 实现 SSE 连接和消息处理
-	// MoviePilot SSE endpoint: /api/v1/system/message
-	// 需要处理重连、错误恢复等
+	// 获取 MP Token
+	token, err := t.mpClient.GetToken(t.ctx)
+	if err != nil {
+		t.logger.Error("Failed to get MP token for SSE", zap.Error(err))
+		return
+	}
 
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	// 创建 SSE 客户端
+	sseClient := NewSSEClient(t.cfg.MPURL, token, t.logger, t.ctx)
 
-	for {
-		select {
-		case <-t.ctx.Done():
-			t.logger.Info("SSE listener stopped")
-			return
-		case <-ticker.C:
-			// 保持连接活跃
-			// TODO: 实际的 SSE 实现应该是阻塞式的
-			t.logger.Debug("SSE listener heartbeat")
-		}
+	// 设置消息处理器
+	sseClient.SetMessageHandler(func(notification *MPNotification) {
+		t.handleNotification(notification)
+	})
+
+	// 连接到 SSE（阻塞式）
+	if err := sseClient.Connect(); err != nil {
+		t.logger.Error("SSE connection failed", zap.Error(err))
 	}
 }
 
@@ -329,4 +331,117 @@ func (t *Tracker) processTransferHistory(tracking []*store.SubscriptionTracking,
 			}
 		}
 	}
+}
+
+// handleNotification 处理 MP 通知
+func (t *Tracker) handleNotification(notification *MPNotification) {
+	t.logger.Info("Received MP notification",
+		zap.String("type", notification.MType),
+		zap.String("content_type", notification.CType),
+		zap.String("title", notification.Title),
+		zap.String("username", notification.Username),
+	)
+
+	// 提取标题中的影片名称（去掉年份和后缀）
+	// 例如：辛德勒的名单 (1993) 已添加订阅 → 辛德勒的名单
+	title := extractMediaTitle(notification.Title)
+
+	// 根据内容类型处理
+	switch notification.CType {
+	case "subscribeAdded":
+		t.handleSubscribeAdded(title, notification)
+	case "subscribeComplete":
+		t.handleSubscribeComplete(title, notification)
+	case "downloadStart":
+		t.handleDownloadStart(title, notification)
+	case "downloadComplete":
+		t.handleDownloadComplete(title, notification)
+	case "transferComplete":
+		t.handleTransferComplete(title, notification)
+	default:
+		t.logger.Debug("Unhandled notification type",
+			zap.String("content_type", notification.CType),
+		)
+	}
+}
+
+// handleSubscribeAdded 处理订阅已添加
+func (t *Tracker) handleSubscribeAdded(title string, notification *MPNotification) {
+	// 这个通知通常在我们自己订阅后触发，已经处理过了
+	t.logger.Debug("Subscribe added notification received",
+		zap.String("title", title),
+	)
+}
+
+// handleSubscribeComplete 处理订阅完成（找到资源）
+func (t *Tracker) handleSubscribeComplete(title string, notification *MPNotification) {
+	t.logger.Info("Subscribe complete notification received",
+		zap.String("title", title),
+	)
+
+	// 这可能意味着 MP 已经找到资源并准备开始下载
+	// 我们可以发送一个通知
+	if t.telegram != nil && t.telegram.IsEnabled() {
+		msg := fmt.Sprintf(
+			"🎯 <b>已找到资源</b>\n\n"+
+				"📺 %s\n"+
+				"👤 用户: %s\n"+
+				"⏰ %s",
+			title,
+			notification.Username,
+			time.Now().Format("2006-01-02 15:04:05"),
+		)
+		t.telegram.SendMessageAsync(msg)
+	}
+}
+
+// handleDownloadStart 处理开始下载
+func (t *Tracker) handleDownloadStart(title string, notification *MPNotification) {
+	t.logger.Info("Download start notification received",
+		zap.String("title", title),
+	)
+
+	// 发送 Telegram 通知
+	if t.telegram != nil && t.telegram.IsEnabled() {
+		t.telegram.NotifyDownloadStarted(title)
+	}
+}
+
+// handleDownloadComplete 处理下载完成
+func (t *Tracker) handleDownloadComplete(title string, notification *MPNotification) {
+	t.logger.Info("Download complete notification received",
+		zap.String("title", title),
+	)
+
+	// 发送 Telegram 通知
+	if t.telegram != nil && t.telegram.IsEnabled() {
+		t.telegram.NotifyDownloadComplete(title)
+	}
+}
+
+// handleTransferComplete 处理入库完成
+func (t *Tracker) handleTransferComplete(title string, notification *MPNotification) {
+	t.logger.Info("Transfer complete notification received",
+		zap.String("title", title),
+	)
+
+	// 发送 Telegram 通知
+	if t.telegram != nil && t.telegram.IsEnabled() {
+		t.telegram.NotifyTransferComplete(title)
+	}
+}
+
+// extractMediaTitle 从通知标题中提取媒体标题
+// 例如：辛德勒的名单 (1993) 已添加订阅 → 辛德勒的名单
+func extractMediaTitle(fullTitle string) string {
+	// 移除年份
+	if idx := strings.Index(fullTitle, "("); idx > 0 {
+		fullTitle = strings.TrimSpace(fullTitle[:idx])
+	}
+	// 移除后缀
+	suffixes := []string{"已添加订阅", "已完成订阅", "开始下载", "下载完成", "入库完成"}
+	for _, suffix := range suffixes {
+		fullTitle = strings.TrimSuffix(fullTitle, suffix)
+	}
+	return strings.TrimSpace(fullTitle)
 }
