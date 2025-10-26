@@ -24,6 +24,21 @@ type Store interface {
 	UpdateMPLink(link *MPLink) error
 	ListFailedLinks(limit int) ([]*MPLink, error)
 
+	// SubscriptionTracking 相关
+	SaveTracking(tracking *SubscriptionTracking) error
+	GetTracking(sourceRequestID string) (*SubscriptionTracking, error)
+	UpdateTracking(tracking *SubscriptionTracking) error
+	ListTrackingByStatus(status TrackingStatus, limit int) ([]*SubscriptionTracking, error)
+
+	// DownloadEvent 相关
+	SaveEvent(event *DownloadEvent) error
+	ListEvents(sourceRequestID string, limit int) ([]*DownloadEvent, error)
+
+	// DailyReport 相关
+	SaveReport(report *DailyReport) error
+	GetReport(reportDate string) (*DailyReport, error)
+	ListRecentReports(days int) ([]*DailyReport, error)
+
 	// 统计
 	GetStats() (*Stats, error)
 
@@ -105,6 +120,56 @@ func (s *SQLiteStore) migrate() error {
 
 	CREATE INDEX IF NOT EXISTS idx_mp_links_state ON mp_links(state);
 	CREATE INDEX IF NOT EXISTS idx_mp_links_source_id ON mp_links(source_request_id);
+
+	-- 订阅跟踪表
+	CREATE TABLE IF NOT EXISTS subscription_tracking (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source_request_id TEXT NOT NULL UNIQUE,
+		tmdb_id INTEGER NOT NULL,
+		title TEXT NOT NULL,
+		media_type TEXT NOT NULL,
+		subscribe_status TEXT NOT NULL DEFAULT 'pending',
+		subscribe_time DATETIME,
+		download_start_time DATETIME,
+		download_finish_time DATETIME,
+		transfer_time DATETIME,
+		retry_count INTEGER NOT NULL DEFAULT 0,
+		last_retry_time DATETIME,
+		error_message TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_tracking_status ON subscription_tracking(subscribe_status);
+	CREATE INDEX IF NOT EXISTS idx_tracking_source_id ON subscription_tracking(source_request_id);
+	CREATE INDEX IF NOT EXISTS idx_tracking_created_at ON subscription_tracking(created_at);
+
+	-- 下载事件表
+	CREATE TABLE IF NOT EXISTS download_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source_request_id TEXT NOT NULL,
+		event_type TEXT NOT NULL,
+		event_data TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_events_source_id ON download_events(source_request_id);
+	CREATE INDEX IF NOT EXISTS idx_events_type ON download_events(event_type);
+	CREATE INDEX IF NOT EXISTS idx_events_created_at ON download_events(created_at);
+
+	-- 每日报告表
+	CREATE TABLE IF NOT EXISTS daily_reports (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		report_date TEXT NOT NULL UNIQUE,
+		total_subscribed INTEGER NOT NULL DEFAULT 0,
+		total_downloaded INTEGER NOT NULL DEFAULT 0,
+		total_transferred INTEGER NOT NULL DEFAULT 0,
+		total_failed INTEGER NOT NULL DEFAULT 0,
+		report_content TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_reports_date ON daily_reports(report_date);
 	`
 
 	_, err := s.db.Exec(schema)

@@ -94,3 +94,68 @@ type MPLink struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
+
+// TrackingStatus 订阅跟踪状态
+type TrackingStatus string
+
+const (
+	TrackingPending      TrackingStatus = "pending"      // 待订阅
+	TrackingSubscribed   TrackingStatus = "subscribed"   // 已订阅
+	TrackingDownloading  TrackingStatus = "downloading"  // 下载中
+	TrackingDownloaded   TrackingStatus = "downloaded"   // 下载完成
+	TrackingTransferred  TrackingStatus = "transferred"  // 已入库
+	TrackingFailed       TrackingStatus = "failed"       // 失败
+	TrackingManualSearch TrackingStatus = "manual_search" // 手动搜索
+)
+
+// SubscriptionTracking 订阅跟踪记录
+type SubscriptionTracking struct {
+	ID                 int64          `json:"id"`
+	SourceRequestID    string         `json:"source_request_id"`
+	TMDBID             int            `json:"tmdb_id"`
+	Title              string         `json:"title"`
+	MediaType          MediaType      `json:"media_type"`
+	SubscribeStatus    TrackingStatus `json:"subscribe_status"`
+	SubscribeTime      *time.Time     `json:"subscribe_time,omitempty"`
+	DownloadStartTime  *time.Time     `json:"download_start_time,omitempty"`
+	DownloadFinishTime *time.Time     `json:"download_finish_time,omitempty"`
+	TransferTime       *time.Time     `json:"transfer_time,omitempty"`
+	RetryCount         int            `json:"retry_count"`
+	LastRetryTime      *time.Time     `json:"last_retry_time,omitempty"`
+	ErrorMessage       string         `json:"error_message,omitempty"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+}
+
+// EventType 事件类型
+type EventType string
+
+const (
+	EventSubscribed       EventType = "subscribed"        // 订阅成功
+	EventDownloadStarted  EventType = "download_started"  // 开始下载
+	EventDownloadComplete EventType = "download_complete" // 下载完成
+	EventTransferComplete EventType = "transfer_complete" // 入库完成
+	EventFailed           EventType = "failed"            // 失败
+	EventManualSearch     EventType = "manual_search"     // 手动搜索
+)
+
+// DownloadEvent 下载事件记录
+type DownloadEvent struct {
+	ID              int64     `json:"id"`
+	SourceRequestID string    `json:"source_request_id"`
+	EventType       EventType `json:"event_type"`
+	EventData       string    `json:"event_data"` // JSON 格式的事件数据
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// DailyReport 每日报告
+type DailyReport struct {
+	ID               int64     `json:"id"`
+	ReportDate       string    `json:"report_date"` // YYYY-MM-DD 格式
+	TotalSubscribed  int       `json:"total_subscribed"`
+	TotalDownloaded  int       `json:"total_downloaded"`
+	TotalTransferred int       `json:"total_transferred"`
+	TotalFailed      int       `json:"total_failed"`
+	ReportContent    string    `json:"report_content"` // JSON 格式的详细报告
+	CreatedAt        time.Time `json:"created_at"`
+}
