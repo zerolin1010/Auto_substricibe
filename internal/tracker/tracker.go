@@ -187,6 +187,7 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 		for _, item := range history.Items {
 			if item.TMDBID == record.TMDBID && item.Type == string(record.MediaType) {
 				// 找到匹配的下载记录
+				// 只有从 subscribed 状态才发送"开始下载"通知（避免重复）
 				if record.SubscribeStatus == store.TrackingSubscribed {
 					// 从已订阅变为下载中
 					t.logger.Info("Download started",
@@ -199,9 +200,10 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 					record.DownloadStartTime = &now
 					if err := t.store.UpdateTracking(record); err != nil {
 						t.logger.Error("Failed to update tracking", zap.Error(err))
+						continue
 					}
 
-					// 发送 Telegram 通知
+					// 发送 Telegram 通知（只发送一次）
 					if t.telegram != nil && t.telegram.IsEnabled() {
 						t.telegram.NotifyDownloadStarted(record.Title)
 					}
@@ -218,6 +220,7 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 				}
 
 				// 检查下载是否完成
+				// 只有从 downloading 状态才发送"下载完成"通知（避免重复）
 				if item.Status == "completed" && record.SubscribeStatus == store.TrackingDownloading {
 					t.logger.Info("Download completed",
 						zap.String("title", record.Title),
@@ -229,9 +232,10 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 					record.DownloadFinishTime = &now
 					if err := t.store.UpdateTracking(record); err != nil {
 						t.logger.Error("Failed to update tracking", zap.Error(err))
+						continue
 					}
 
-					// 发送 Telegram 通知
+					// 发送 Telegram 通知（只发送一次）
 					if t.telegram != nil && t.telegram.IsEnabled() {
 						t.telegram.NotifyDownloadComplete(record.Title)
 					}
@@ -260,7 +264,10 @@ func (t *Tracker) processTransferHistory(tracking []*store.SubscriptionTracking,
 		for _, item := range history.Items {
 			if item.TMDBID == record.TMDBID && item.Type == string(record.MediaType) {
 				// 找到匹配的入库记录
-				if record.SubscribeStatus == store.TrackingDownloaded || record.SubscribeStatus == store.TrackingDownloading {
+				// 只有从 downloaded 或 downloading 状态才发送"入库完成"通知（避免重复）
+				// 同时排除已经是 transferred 状态的记录
+				if (record.SubscribeStatus == store.TrackingDownloaded || record.SubscribeStatus == store.TrackingDownloading) &&
+					record.SubscribeStatus != store.TrackingTransferred {
 					t.logger.Info("Transfer completed",
 						zap.String("title", record.Title),
 						zap.Int("tmdb_id", record.TMDBID),
@@ -271,9 +278,10 @@ func (t *Tracker) processTransferHistory(tracking []*store.SubscriptionTracking,
 					record.TransferTime = &now
 					if err := t.store.UpdateTracking(record); err != nil {
 						t.logger.Error("Failed to update tracking", zap.Error(err))
+						continue
 					}
 
-					// 发送 Telegram 通知
+					// 发送 Telegram 通知（只发送一次）
 					if t.telegram != nil && t.telegram.IsEnabled() {
 						t.telegram.NotifyTransferComplete(record.Title)
 					}
