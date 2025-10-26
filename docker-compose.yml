@@ -33,6 +33,26 @@ services:
 
       # 日志配置
       - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Telegram 通知配置
+      - TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_IDS=${TELEGRAM_CHAT_IDS}
+
+      # 跟踪和监控配置
+      - TRACKER_ENABLED=${TRACKER_ENABLED:-true}
+      - TRACKER_CHECK_INTERVAL=${TRACKER_CHECK_INTERVAL:-5}
+      - TRACKER_SSE_ENABLED=${TRACKER_SSE_ENABLED:-true}
+
+      # 智能重试配置
+      - SMART_RETRY_ENABLED=${SMART_RETRY_ENABLED:-true}
+      - SMART_RETRY_MAX_ATTEMPTS=${SMART_RETRY_MAX_ATTEMPTS:-3}
+      - SMART_RETRY_INITIAL_DELAY=${SMART_RETRY_INITIAL_DELAY:-24}
+      - SMART_RETRY_CHECK_INTERVAL=${SMART_RETRY_CHECK_INTERVAL:-1}
+
+      # 每日报告配置
+      - REPORT_ENABLED=${REPORT_ENABLED:-true}
+      - REPORT_TIME=${REPORT_TIME:-09:00}
     volumes:
       - ./data:/app/data
     # 如果遇到权限问题，取消下面这行注释以 root 用户运行
