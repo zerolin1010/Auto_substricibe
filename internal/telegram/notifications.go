@@ -31,9 +31,18 @@ func (b *Bot) NotifySubscribed(title, mediaType string, tmdbID int, posterPath s
 	// 如果有海报，发送图片消息
 	if posterPath != "" {
 		imageURL := fmt.Sprintf("https://image.tmdb.org/t/p/w500%s", posterPath)
+		b.logger.Info("Sending notification with poster",
+			zap.String("title", title),
+			zap.String("poster_path", posterPath),
+			zap.String("image_url", imageURL),
+		)
 		b.sendPhotoAsync(imageURL, caption)
 	} else {
 		// 没有海报，发送纯文本
+		b.logger.Info("Sending notification without poster (posterPath is empty)",
+			zap.String("title", title),
+			zap.Int("tmdb_id", tmdbID),
+		)
 		b.SendMessageAsync(caption)
 	}
 }

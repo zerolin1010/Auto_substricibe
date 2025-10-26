@@ -12,6 +12,9 @@ services:
       - JELLY_FILTER=${JELLY_FILTER:-approved}
       - JELLY_PAGE_SIZE=${JELLY_PAGE_SIZE:-50}
 
+      # TMDB 配置（可选）
+      - TMDB_API_KEY=${TMDB_API_KEY}
+
       # MoviePilot 配置
       - MP_URL=${MP_URL}
       - MP_USERNAME=${MP_USERNAME}

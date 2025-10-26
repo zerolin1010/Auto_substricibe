@@ -15,6 +15,9 @@ type Config struct {
 	JellyFilter   string // approved, pending 等
 	JellyPageSize int
 
+	// TMDB 配置（可选，用于获取海报）
+	TMDPAPIKey string
+
 	// MoviePilot 配置
 	MPURL           string
 	MPUsername      string // MoviePilot 用户名（必需）
@@ -66,6 +69,9 @@ func Load() (*Config, error) {
 		JellyAPIKey:   getEnv("JELLY_API_KEY", ""),
 		JellyFilter:   getEnv("JELLY_FILTER", "approved"),
 		JellyPageSize: getEnvAsInt("JELLY_PAGE_SIZE", 50),
+
+		// TMDB 配置（可选）
+		TMDPAPIKey: getEnv("TMDB_API_KEY", ""),
 
 		// MoviePilot 默认值
 		MPURL:           getEnv("MP_URL", ""),

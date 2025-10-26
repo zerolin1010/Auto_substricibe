@@ -11,6 +11,7 @@ import (
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/mp"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/store"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/telegram"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/tmdb"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +20,7 @@ type Syncer struct {
 	cfg         *configs.Config
 	jellyClient *jelly.Client
 	mpClient    *mp.Client
+	tmdbClient  *tmdb.Client
 	store       store.Store
 	telegram    *telegram.Bot
 	logger      *zap.Logger
@@ -28,6 +30,14 @@ type Syncer struct {
 func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*Syncer, error) {
 	// 创建 Jellyseerr 客户端
 	jellyClient := jelly.NewClient(cfg.JellyURL, cfg.JellyAPIKey)
+
+	// 创建 TMDB 客户端（可选）
+	tmdbClient := tmdb.NewClient(cfg.TMDPAPIKey)
+	if tmdbClient != nil {
+		logger.Info("TMDB client enabled for poster fetching")
+	} else {
+		logger.Info("TMDB client disabled (no API key configured)")
+	}
 
 	// 创建 MoviePilot 客户端
 	mpClient, err := mp.NewClient(mp.ClientConfig{
@@ -74,6 +84,7 @@ func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*S
 		cfg:         cfg,
 		jellyClient: jellyClient,
 		mpClient:    mpClient,
+		tmdbClient:  tmdbClient,
 		store:       st,
 		telegram:    tgBot,
 		logger:      logger,
@@ -159,6 +170,31 @@ func (s *Syncer) processRequest(ctx context.Context, jellyReq *jelly.MediaReques
 	} else {
 		title = details.GetTitle()
 		posterPath = details.PosterPath
+		s.logger.Debug("fetched media details from Jellyseerr",
+			zap.String("title", title),
+			zap.String("poster_path", posterPath),
+			zap.Int("tmdb_id", jellyReq.Media.TMDBID),
+		)
+	}
+
+	// 如果 Jellyseerr 没有返回 posterPath，尝试从 TMDB 获取
+	if posterPath == "" && s.tmdbClient != nil {
+		s.logger.Debug("posterPath empty from Jellyseerr, trying TMDB API",
+			zap.Int("tmdb_id", jellyReq.Media.TMDBID),
+		)
+		tmdbPoster, err := s.tmdbClient.GetPosterPath(ctx, mediaType, jellyReq.Media.TMDBID)
+		if err != nil {
+			s.logger.Warn("failed to fetch poster from TMDB",
+				zap.Int("tmdb_id", jellyReq.Media.TMDBID),
+				zap.Error(err),
+			)
+		} else if tmdbPoster != "" {
+			posterPath = tmdbPoster
+			s.logger.Info("fetched poster from TMDB API",
+				zap.String("title", title),
+				zap.String("poster_path", posterPath),
+			)
+		}
 	}
 
 	// 转换为本地请求
