@@ -170,7 +170,7 @@ func (t *Tracker) checkDownloadStatus() error {
 	if err != nil {
 		t.logger.Warn("Failed to get download history", zap.Error(err))
 		// 不返回错误，继续检查入库历史
-	} else if downloadHistory != nil && len(downloadHistory) > 0 {
+	} else if len(downloadHistory) > 0 {
 		t.logger.Debug("Got download history", zap.Int("count", len(downloadHistory)))
 		t.processDownloadHistory(allTracking, downloadHistory)
 	}
@@ -179,7 +179,7 @@ func (t *Tracker) checkDownloadStatus() error {
 	transferHistory, err := t.mpClient.GetTransferHistory(t.ctx, 1, 100)
 	if err != nil {
 		t.logger.Warn("Failed to get transfer history", zap.Error(err))
-	} else if transferHistory != nil && len(transferHistory) > 0 {
+	} else if len(transferHistory) > 0 {
 		t.logger.Debug("Got transfer history", zap.Int("count", len(transferHistory)))
 		t.processTransferHistory(allTracking, transferHistory)
 	}
