@@ -134,6 +134,11 @@ func (c *SSEClient) connectOnce(url string) error {
 
 			line = strings.TrimRight(line, "\n\r")
 
+			// 跳过注释行（用于保持连接）
+			if strings.HasPrefix(line, ":") {
+				continue
+			}
+
 			// SSE 格式：data: {json}
 			if strings.HasPrefix(line, "data: ") {
 				data := strings.TrimPrefix(line, "data: ")
@@ -144,9 +149,6 @@ func (c *SSEClient) connectOnce(url string) error {
 					c.handleEvent(eventData.String())
 					eventData.Reset()
 				}
-			} else if strings.HasPrefix(line, ":") {
-				// 注释行，忽略（用于保持连接）
-				continue
 			}
 		}
 	}
