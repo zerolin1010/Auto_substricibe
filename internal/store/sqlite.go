@@ -259,8 +259,9 @@ func (s *SQLiteStore) GetRequest(sourceRequestID string) (*Request, error) {
 	`
 
 	req := &Request{}
+	var posterPath sql.NullString
 	err := s.db.QueryRow(query, sourceRequestID).Scan(
-		&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &req.PosterPath,
+		&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &posterPath,
 		&req.SeasonsJSON, &req.EpisodesJSON, &req.Status, &req.RequestedAt,
 		&req.CreatedAt, &req.UpdatedAt,
 	)
@@ -269,6 +270,11 @@ func (s *SQLiteStore) GetRequest(sourceRequestID string) (*Request, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	// 处理 NULL 值
+	if posterPath.Valid {
+		req.PosterPath = posterPath.String
 	}
 
 	return req, nil
@@ -293,12 +299,17 @@ func (s *SQLiteStore) ListPendingRequests(limit int) ([]*Request, error) {
 	var requests []*Request
 	for rows.Next() {
 		req := &Request{}
+		var posterPath sql.NullString
 		if err := rows.Scan(
-			&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &req.PosterPath,
+			&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &posterPath,
 			&req.SeasonsJSON, &req.EpisodesJSON, &req.Status, &req.RequestedAt,
 			&req.CreatedAt, &req.UpdatedAt,
 		); err != nil {
 			return nil, err
+		}
+		// 处理 NULL 值
+		if posterPath.Valid {
+			req.PosterPath = posterPath.String
 		}
 		requests = append(requests, req)
 	}
