@@ -187,8 +187,13 @@ func (c *Client) doSubscribe(ctx context.Context, req *SubscribeRequest) (*Subsc
 	// 解析响应
 	var response SubscribeResponse
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
+
+	// 记录响应内容用于调试
+	// 注意：生产环境可以设置为 Debug 级别
+	// log.Printf("[MP Subscribe] Success=%v, Message=%s, Code=%d, Body=%s",
+	// 	response.Success, response.Message, response.Code, string(respBody))
 
 	// 检查业务状态
 	if !response.Success {

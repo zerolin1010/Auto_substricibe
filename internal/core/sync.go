@@ -354,6 +354,14 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 		return fmt.Errorf("subscribe movie: %w", err)
 	}
 
+	// 记录 MoviePilot 响应用于调试
+	s.logger.Debug("MoviePilot subscribe response",
+		zap.String("title", req.Title),
+		zap.Bool("success", resp.Success),
+		zap.String("message", resp.Message),
+		zap.Int("code", resp.Code),
+	)
+
 	// 检查是否为"已存在"响应
 	alreadyExists := resp.IsAlreadyExists()
 	if alreadyExists {
