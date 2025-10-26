@@ -315,3 +315,129 @@ func (e *NonRetryableError) Error() string {
 func (e *NonRetryableError) Unwrap() error {
 	return e.Err
 }
+
+// DownloadHistoryResponse 下载历史响应
+type DownloadHistoryResponse struct {
+	Total int                  `json:"total"`
+	Items []DownloadHistoryItem `json:"items"`
+}
+
+// DownloadHistoryItem 下载历史项
+type DownloadHistoryItem struct {
+	ID           int       `json:"id"`
+	Title        string    `json:"title"`
+	Type         string    `json:"type"` // "电影" 或 "电视剧"
+	TMDBID       int       `json:"tmdb_id"`
+	Status       string    `json:"status"` // "downloading", "completed", "failed"
+	DownloadHash string    `json:"download_hash"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// TransferHistoryResponse 入库历史响应
+type TransferHistoryResponse struct {
+	Total int                    `json:"total"`
+	Items []TransferHistoryItem `json:"items"`
+}
+
+// TransferHistoryItem 入库历史项
+type TransferHistoryItem struct {
+	ID        int       `json:"id"`
+	Title     string    `json:"title"`
+	Type      string    `json:"type"` // "电影" 或 "电视剧"
+	TMDBID    int       `json:"tmdb_id"`
+	Path      string    `json:"path"`
+	Status    string    `json:"status"` // "success", "failed"
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// GetDownloadHistory 获取下载历史
+func (c *Client) GetDownloadHistory(ctx context.Context, page, pageSize int) (*DownloadHistoryResponse, error) {
+	// 等待速率限制
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/history/download?page=%d&page_size=%d", c.baseURL, page, pageSize)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	// 设置认证
+	if err := c.setAuth(httpReq, ctx); err != nil {
+		return nil, err
+	}
+
+	httpReq.Header.Set("Accept", "application/json")
+
+	// 发送请求
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	// 读取响应
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d: %s", httpResp.StatusCode, string(respBody))
+	}
+
+	var resp DownloadHistoryResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// GetTransferHistory 获取入库历史
+func (c *Client) GetTransferHistory(ctx context.Context, page, pageSize int) (*TransferHistoryResponse, error) {
+	// 等待速率限制
+	if err := c.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/history/transfer?page=%d&page_size=%d", c.baseURL, page, pageSize)
+
+	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	// 设置认证
+	if err := c.setAuth(httpReq, ctx); err != nil {
+		return nil, err
+	}
+
+	httpReq.Header.Set("Accept", "application/json")
+
+	// 发送请求
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	// 读取响应
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d: %s", httpResp.StatusCode, string(respBody))
+	}
+
+	var resp TransferHistoryResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+
+	return &resp, nil
+}

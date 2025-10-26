@@ -12,6 +12,7 @@ import (
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/store"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/telegram"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/tmdb"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/tracker"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +24,7 @@ type Syncer struct {
 	tmdbClient  *tmdb.Client
 	store       store.Store
 	telegram    *telegram.Bot
+	tracker     *tracker.Tracker
 	logger      *zap.Logger
 }
 
@@ -80,6 +82,15 @@ func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*S
 		logger.Info("Telegram bot disabled in config")
 	}
 
+	// 创建 Tracker（如果启用）
+	var trk *tracker.Tracker
+	if cfg.TrackerEnabled {
+		logger.Info("Tracker enabled, initializing...")
+		trk = tracker.NewTracker(cfg, mpClient, st, tgBot, logger)
+	} else {
+		logger.Info("Tracker disabled in config")
+	}
+
 	return &Syncer{
 		cfg:         cfg,
 		jellyClient: jellyClient,
@@ -87,6 +98,7 @@ func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*S
 		tmdbClient:  tmdbClient,
 		store:       st,
 		telegram:    tgBot,
+		tracker:     trk,
 		logger:      logger,
 	}, nil
 }
@@ -533,6 +545,12 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 
 // Close 关闭同步器
 func (s *Syncer) Close() error {
+	// 停止 tracker
+	if s.tracker != nil {
+		if err := s.tracker.Stop(); err != nil {
+			s.logger.Error("Failed to stop tracker", zap.Error(err))
+		}
+	}
 	return s.store.Close()
 }
 
@@ -541,6 +559,13 @@ func (s *Syncer) RunDaemon(ctx context.Context) error {
 	s.logger.Info("starting daemon mode",
 		zap.Int("interval_minutes", s.cfg.SyncInterval),
 	)
+
+	// 启动 tracker
+	if s.tracker != nil {
+		if err := s.tracker.Start(); err != nil {
+			s.logger.Error("Failed to start tracker", zap.Error(err))
+		}
+	}
 
 	ticker := time.NewTicker(time.Duration(s.cfg.SyncInterval) * time.Minute)
 	defer ticker.Stop()
