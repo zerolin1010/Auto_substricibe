@@ -95,6 +95,7 @@ func (s *SQLiteStore) migrate() error {
 		media_type TEXT NOT NULL,
 		tmdb_id INTEGER NOT NULL,
 		title TEXT NOT NULL,
+		poster_path TEXT,
 		seasons_json TEXT,
 		episodes_json TEXT,
 		status TEXT NOT NULL DEFAULT 'pending',
@@ -172,8 +173,41 @@ func (s *SQLiteStore) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_reports_date ON daily_reports(report_date);
 	`
 
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// 迁移：为已存在的 requests 表添加 poster_path 列
+	// 使用 PRAGMA 检查列是否存在
+	var hasPosterPath bool
+	rows, err := s.db.Query("PRAGMA table_info(requests)")
+	if err != nil {
+		return fmt.Errorf("check table schema: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan table info: %w", err)
+		}
+		if name == "poster_path" {
+			hasPosterPath = true
+			break
+		}
+	}
+
+	// 如果不存在 poster_path 列，添加它
+	if !hasPosterPath {
+		if _, err := s.db.Exec("ALTER TABLE requests ADD COLUMN poster_path TEXT"); err != nil {
+			return fmt.Errorf("add poster_path column: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // SaveRequest 保存请求
@@ -183,12 +217,13 @@ func (s *SQLiteStore) SaveRequest(req *Request) error {
 	req.UpdatedAt = now
 
 	query := `
-		INSERT INTO requests (source_request_id, media_type, tmdb_id, title, seasons_json, episodes_json, status, requested_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO requests (source_request_id, media_type, tmdb_id, title, poster_path, seasons_json, episodes_json, status, requested_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(source_request_id) DO UPDATE SET
 			media_type = excluded.media_type,
 			tmdb_id = excluded.tmdb_id,
 			title = excluded.title,
+			poster_path = excluded.poster_path,
 			seasons_json = excluded.seasons_json,
 			episodes_json = excluded.episodes_json,
 			status = excluded.status,
@@ -197,7 +232,7 @@ func (s *SQLiteStore) SaveRequest(req *Request) error {
 	`
 
 	result, err := s.db.Exec(query,
-		req.SourceRequestID, req.MediaType, req.TMDBID, req.Title,
+		req.SourceRequestID, req.MediaType, req.TMDBID, req.Title, req.PosterPath,
 		req.SeasonsJSON, req.EpisodesJSON, req.Status, req.RequestedAt,
 		req.CreatedAt, req.UpdatedAt,
 	)
@@ -218,14 +253,14 @@ func (s *SQLiteStore) SaveRequest(req *Request) error {
 // GetRequest 获取请求
 func (s *SQLiteStore) GetRequest(sourceRequestID string) (*Request, error) {
 	query := `
-		SELECT id, source_request_id, media_type, tmdb_id, title, seasons_json, episodes_json, status, requested_at, created_at, updated_at
+		SELECT id, source_request_id, media_type, tmdb_id, title, poster_path, seasons_json, episodes_json, status, requested_at, created_at, updated_at
 		FROM requests
 		WHERE source_request_id = ?
 	`
 
 	req := &Request{}
 	err := s.db.QueryRow(query, sourceRequestID).Scan(
-		&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title,
+		&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &req.PosterPath,
 		&req.SeasonsJSON, &req.EpisodesJSON, &req.Status, &req.RequestedAt,
 		&req.CreatedAt, &req.UpdatedAt,
 	)
@@ -242,7 +277,7 @@ func (s *SQLiteStore) GetRequest(sourceRequestID string) (*Request, error) {
 // ListPendingRequests 列出待处理请求
 func (s *SQLiteStore) ListPendingRequests(limit int) ([]*Request, error) {
 	query := `
-		SELECT id, source_request_id, media_type, tmdb_id, title, seasons_json, episodes_json, status, requested_at, created_at, updated_at
+		SELECT id, source_request_id, media_type, tmdb_id, title, poster_path, seasons_json, episodes_json, status, requested_at, created_at, updated_at
 		FROM requests
 		WHERE status = 'pending' OR status = 'retrying'
 		ORDER BY requested_at ASC
@@ -259,7 +294,7 @@ func (s *SQLiteStore) ListPendingRequests(limit int) ([]*Request, error) {
 	for rows.Next() {
 		req := &Request{}
 		if err := rows.Scan(
-			&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title,
+			&req.ID, &req.SourceRequestID, &req.MediaType, &req.TMDBID, &req.Title, &req.PosterPath,
 			&req.SeasonsJSON, &req.EpisodesJSON, &req.Status, &req.RequestedAt,
 			&req.CreatedAt, &req.UpdatedAt,
 		); err != nil {
