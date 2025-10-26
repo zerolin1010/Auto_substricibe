@@ -165,7 +165,8 @@ func (t *Tracker) checkDownloadStatus() error {
 	if err != nil {
 		t.logger.Warn("Failed to get download history", zap.Error(err))
 		// 不返回错误，继续检查入库历史
-	} else {
+	} else if len(downloadHistory) > 0 {
+		t.logger.Debug("Got download history", zap.Int("count", len(downloadHistory)))
 		t.processDownloadHistory(allTracking, downloadHistory)
 	}
 
@@ -173,7 +174,8 @@ func (t *Tracker) checkDownloadStatus() error {
 	transferHistory, err := t.mpClient.GetTransferHistory(t.ctx, 1, 100)
 	if err != nil {
 		t.logger.Warn("Failed to get transfer history", zap.Error(err))
-	} else {
+	} else if len(transferHistory) > 0 {
+		t.logger.Debug("Got transfer history", zap.Int("count", len(transferHistory)))
 		t.processTransferHistory(allTracking, transferHistory)
 	}
 
@@ -181,11 +183,24 @@ func (t *Tracker) checkDownloadStatus() error {
 }
 
 // processDownloadHistory 处理下载历史
-func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking, history *mp.DownloadHistoryResponse) {
+func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking, history []mp.DownloadHistoryItem) {
 	for _, record := range tracking {
 		// 在下载历史中查找匹配的记录
-		for _, item := range history.Items {
-			if item.TMDBID == record.TMDBID && item.Type == string(record.MediaType) {
+		for _, item := range history {
+			// 匹配 TMDB ID
+			if item.TMDBID != record.TMDBID {
+				continue
+			}
+
+			// 匹配媒体类型（MP 使用中文，需要转换）
+			matchType := false
+			if record.MediaType == store.MediaTypeMovie && item.Type == "电影" {
+				matchType = true
+			} else if record.MediaType == store.MediaTypeTV && item.Type == "电视剧" {
+				matchType = true
+			}
+
+			if matchType {
 				// 找到匹配的下载记录
 				// 只有从 subscribed 状态才发送"开始下载"通知（避免重复）
 				if record.SubscribeStatus == store.TrackingSubscribed {
@@ -258,11 +273,24 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 }
 
 // processTransferHistory 处理入库历史
-func (t *Tracker) processTransferHistory(tracking []*store.SubscriptionTracking, history *mp.TransferHistoryResponse) {
+func (t *Tracker) processTransferHistory(tracking []*store.SubscriptionTracking, history []mp.TransferHistoryItem) {
 	for _, record := range tracking {
 		// 在入库历史中查找匹配的记录
-		for _, item := range history.Items {
-			if item.TMDBID == record.TMDBID && item.Type == string(record.MediaType) {
+		for _, item := range history {
+			// 匹配 TMDB ID
+			if item.TMDBID != record.TMDBID {
+				continue
+			}
+
+			// 匹配媒体类型（MP 使用中文，需要转换）
+			matchType := false
+			if record.MediaType == store.MediaTypeMovie && item.Type == "电影" {
+				matchType = true
+			} else if record.MediaType == store.MediaTypeTV && item.Type == "电视剧" {
+				matchType = true
+			}
+
+			if matchType {
 				// 找到匹配的入库记录
 				// 只有从 downloaded 或 downloading 状态才发送"入库完成"通知（避免重复）
 				// 同时排除已经是 transferred 状态的记录

@@ -316,48 +316,46 @@ func (e *NonRetryableError) Unwrap() error {
 	return e.Err
 }
 
-// DownloadHistoryResponse 下载历史响应
-type DownloadHistoryResponse struct {
-	Total int                  `json:"total"`
-	Items []DownloadHistoryItem `json:"items"`
-}
-
 // DownloadHistoryItem 下载历史项
 type DownloadHistoryItem struct {
 	ID           int       `json:"id"`
 	Title        string    `json:"title"`
-	Type         string    `json:"type"` // "电影" 或 "电视剧"
-	TMDBID       int       `json:"tmdb_id"`
-	Status       string    `json:"status"` // "downloading", "completed", "failed"
-	DownloadHash string    `json:"download_hash"`
-	CreatedAt    time.Time `json:"created_at"`
-}
-
-// TransferHistoryResponse 入库历史响应
-type TransferHistoryResponse struct {
-	Total int                    `json:"total"`
-	Items []TransferHistoryItem `json:"items"`
+	Type         string    `json:"type"`         // "电影" 或 "电视剧"
+	Year         int       `json:"year"`
+	TMDBID       int       `json:"tmdbid"`       // 注意：MP API 使用小写 tmdbid
+	Season       int       `json:"season,omitempty"`
+	Episode      int       `json:"episode,omitempty"`
+	Status       string    `json:"status"`       // "downloading", "completed", "failed"
+	DownloadHash string    `json:"download_hash,omitempty"`
+	Torrent      string    `json:"torrent,omitempty"`
+	CreatedAt    string    `json:"date"`         // MP 使用 date 字段
 }
 
 // TransferHistoryItem 入库历史项
 type TransferHistoryItem struct {
-	ID        int       `json:"id"`
-	Title     string    `json:"title"`
-	Type      string    `json:"type"` // "电影" 或 "电视剧"
-	TMDBID    int       `json:"tmdb_id"`
-	Path      string    `json:"path"`
-	Status    string    `json:"status"` // "success", "failed"
-	CreatedAt time.Time `json:"created_at"`
+	ID        int    `json:"id"`
+	Title     string `json:"title"`
+	Type      string `json:"type"`          // "电影" 或 "电视剧"
+	Year      int    `json:"year"`
+	TMDBID    int    `json:"tmdbid"`        // 注意：MP API 使用小写 tmdbid
+	Season    int    `json:"season,omitempty"`
+	Episode   int    `json:"episode,omitempty"`
+	Path      string `json:"path"`
+	Dest      string `json:"dest,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	Status    string `json:"status"`        // "success", "failed"
+	CreatedAt string `json:"date"`          // MP 使用 date 字段
 }
 
 // GetDownloadHistory 获取下载历史
-func (c *Client) GetDownloadHistory(ctx context.Context, page, pageSize int) (*DownloadHistoryResponse, error) {
+// 注意：MoviePilot API 直接返回数组，不是带分页的对象
+func (c *Client) GetDownloadHistory(ctx context.Context, page, pageSize int) ([]DownloadHistoryItem, error) {
 	// 等待速率限制
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/history/download?page=%d&page_size=%d", c.baseURL, page, pageSize)
+	url := fmt.Sprintf("%s/api/v1/history/download?page=%d&count=%d", c.baseURL, page, pageSize)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -388,22 +386,24 @@ func (c *Client) GetDownloadHistory(ctx context.Context, page, pageSize int) (*D
 		return nil, fmt.Errorf("unexpected status code %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
-	var resp DownloadHistoryResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+	// MP API 直接返回数组
+	var items []DownloadHistoryItem
+	if err := json.Unmarshal(respBody, &items); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
 
-	return &resp, nil
+	return items, nil
 }
 
 // GetTransferHistory 获取入库历史
-func (c *Client) GetTransferHistory(ctx context.Context, page, pageSize int) (*TransferHistoryResponse, error) {
+// 注意：MoviePilot API 直接返回数组，不是带分页的对象
+func (c *Client) GetTransferHistory(ctx context.Context, page, pageSize int) ([]TransferHistoryItem, error) {
 	// 等待速率限制
 	if err := c.limiter.Wait(ctx); err != nil {
 		return nil, fmt.Errorf("rate limiter: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v1/history/transfer?page=%d&page_size=%d", c.baseURL, page, pageSize)
+	url := fmt.Sprintf("%s/api/v1/history/transfer?page=%d&count=%d", c.baseURL, page, pageSize)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -434,10 +434,11 @@ func (c *Client) GetTransferHistory(ctx context.Context, page, pageSize int) (*T
 		return nil, fmt.Errorf("unexpected status code %d: %s", httpResp.StatusCode, string(respBody))
 	}
 
-	var resp TransferHistoryResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+	// MP API 直接返回数组
+	var items []TransferHistoryItem
+	if err := json.Unmarshal(respBody, &items); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 	}
 
-	return &resp, nil
+	return items, nil
 }
