@@ -170,7 +170,7 @@ func (t *Tracker) checkDownloadStatus() error {
 	if err != nil {
 		t.logger.Warn("Failed to get download history", zap.Error(err))
 		// 不返回错误，继续检查入库历史
-	} else if len(downloadHistory) > 0 {
+	} else if downloadHistory != nil && len(downloadHistory) > 0 {
 		t.logger.Debug("Got download history", zap.Int("count", len(downloadHistory)))
 		t.processDownloadHistory(allTracking, downloadHistory)
 	}
@@ -179,7 +179,7 @@ func (t *Tracker) checkDownloadStatus() error {
 	transferHistory, err := t.mpClient.GetTransferHistory(t.ctx, 1, 100)
 	if err != nil {
 		t.logger.Warn("Failed to get transfer history", zap.Error(err))
-	} else if len(transferHistory) > 0 {
+	} else if transferHistory != nil && len(transferHistory) > 0 {
 		t.logger.Debug("Got transfer history", zap.Int("count", len(transferHistory)))
 		t.processTransferHistory(allTracking, transferHistory)
 	}
@@ -239,37 +239,8 @@ func (t *Tracker) processDownloadHistory(tracking []*store.SubscriptionTracking,
 					}
 				}
 
-				// 检查下载是否完成
-				// 只有从 downloading 状态才发送"下载完成"通知（避免重复）
-				if item.Status == "completed" && record.SubscribeStatus == store.TrackingDownloading {
-					t.logger.Info("Download completed",
-						zap.String("title", record.Title),
-						zap.Int("tmdb_id", record.TMDBID),
-					)
-
-					now := time.Now()
-					record.SubscribeStatus = store.TrackingDownloaded
-					record.DownloadFinishTime = &now
-					if err := t.store.UpdateTracking(record); err != nil {
-						t.logger.Error("Failed to update tracking", zap.Error(err))
-						continue
-					}
-
-					// 发送 Telegram 通知（只发送一次）
-					if t.telegram != nil && t.telegram.IsEnabled() {
-						t.telegram.NotifyDownloadComplete(record.Title)
-					}
-
-					// 保存事件
-					event := &store.DownloadEvent{
-						SourceRequestID: record.SourceRequestID,
-						EventType:       store.EventDownloadComplete,
-						EventData:       fmt.Sprintf("{\"tmdb_id\": %d, \"title\": \"%s\"}", record.TMDBID, record.Title),
-					}
-					if err := t.store.SaveEvent(event); err != nil {
-						t.logger.Error("Failed to save event", zap.Error(err))
-					}
-				}
+				// 下载完成的判断放在入库历史中处理
+				// 因为 MP API 的下载历史不提供明确的完成状态
 
 				break
 			}

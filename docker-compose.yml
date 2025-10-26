@@ -45,7 +45,8 @@ services:
       # 跟踪和监控配置
       - TRACKER_ENABLED=${TRACKER_ENABLED:-true}
       - TRACKER_CHECK_INTERVAL=${TRACKER_CHECK_INTERVAL:-5}
-      - TRACKER_SSE_ENABLED=${TRACKER_SSE_ENABLED:-true}
+      # 注意：SSE 需要 resource_token，暂不支持。建议禁用
+      - TRACKER_SSE_ENABLED=${TRACKER_SSE_ENABLED:-false}
 
       # 智能重试配置
       - SMART_RETRY_ENABLED=${SMART_RETRY_ENABLED:-true}

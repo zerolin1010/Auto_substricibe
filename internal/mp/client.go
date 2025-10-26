@@ -328,30 +328,31 @@ func (e *NonRetryableError) Unwrap() error {
 
 // DownloadHistoryItem 下载历史项
 type DownloadHistoryItem struct {
-	ID           int       `json:"id"`
-	Title        string    `json:"title"`
-	Type         string    `json:"type"`         // "电影" 或 "电视剧"
-	Year         int       `json:"year"`
-	TMDBID       int       `json:"tmdbid"`       // 注意：MP API 使用小写 tmdbid
-	Season       int       `json:"season,omitempty"`
-	Episode      int       `json:"episode,omitempty"`
-	Status       string    `json:"status"`       // "downloading", "completed", "failed"
-	DownloadHash string    `json:"download_hash,omitempty"`
-	Torrent      string    `json:"torrent,omitempty"`
-	CreatedAt    string    `json:"date"`         // MP 使用 date 字段
+	ID           int    `json:"id"`
+	Title        string `json:"title"`
+	Type         string `json:"type"`                  // "电影" 或 "电视剧"
+	Year         string `json:"year"`                  // 年份（字符串格式，如 "2024"）
+	TMDBID       int    `json:"tmdbid"`                // 注意：MP API 使用小写 tmdbid
+	IMDBID       string `json:"imdbid,omitempty"`
+	Seasons      string `json:"seasons,omitempty"`     // "S01" 等
+	Episodes     string `json:"episodes,omitempty"`    // "E01-E03" 等
+	DownloadHash string `json:"download_hash,omitempty"`
+	TorrentName  string `json:"torrent_name,omitempty"`
+	Date         string `json:"date"`                  // "2025-01-21 01:36:41"
 }
 
 // TransferHistoryItem 入库历史项
 type TransferHistoryItem struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	Type      string `json:"type"`          // "电影" 或 "电视剧"
-	Year      int    `json:"year"`
-	TMDBID    int    `json:"tmdbid"`        // 注意：MP API 使用小写 tmdbid
-	Season    int    `json:"season,omitempty"`
-	Episode   int    `json:"episode,omitempty"`
-	Path      string `json:"path"`
-	Dest      string `json:"dest,omitempty"`
+	ID       int    `json:"id"`
+	Title    string `json:"title"`
+	Type     string `json:"type"`              // "电影" 或 "电视剧"
+	Year     string `json:"year"`              // 年份（字符串格式）
+	TMDBID   int    `json:"tmdbid"`            // 注意：MP API 使用小写 tmdbid
+	IMDBID   string `json:"imdbid,omitempty"`
+	Seasons  string `json:"seasons,omitempty"` // "S01" 等
+	Episodes string `json:"episodes,omitempty"` // "E01-E03" 等
+	Path     string `json:"path"`
+	Dest     string `json:"dest,omitempty"`
 	Mode      string `json:"mode,omitempty"`
 	Status    string `json:"status"`        // "success", "failed"
 	CreatedAt string `json:"date"`          // MP 使用 date 字段
