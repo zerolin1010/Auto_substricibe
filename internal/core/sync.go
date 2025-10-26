@@ -58,10 +58,16 @@ func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*S
 	// 创建 Telegram Bot（如果启用）
 	var tgBot *telegram.Bot
 	if cfg.TelegramEnabled {
+		logger.Info("Telegram bot enabled, initializing...",
+			zap.Int("chat_count", len(cfg.TelegramChatIDs)),
+		)
 		tgBot, err = telegram.NewBot(cfg.TelegramToken, cfg.TelegramChatIDs, logger)
 		if err != nil {
-			logger.Warn("Failed to create telegram bot", zap.Error(err))
+			logger.Error("Failed to create telegram bot", zap.Error(err))
+			// 即使失败也继续，只是没有通知功能
 		}
+	} else {
+		logger.Info("Telegram bot disabled in config")
 	}
 
 	return &Syncer{
@@ -339,7 +345,14 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
+		s.logger.Debug("Sending telegram notification for movie", zap.String("title", req.Title))
 		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
+	} else {
+		if s.telegram == nil {
+			s.logger.Debug("Telegram bot not initialized, skipping notification")
+		} else {
+			s.logger.Debug("Telegram bot disabled, skipping notification")
+		}
 	}
 
 	return nil
@@ -466,7 +479,14 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 
 	// 发送 Telegram 通知
 	if s.telegram != nil && s.telegram.IsEnabled() {
+		s.logger.Debug("Sending telegram notification for TV", zap.String("title", req.Title))
 		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
+	} else {
+		if s.telegram == nil {
+			s.logger.Debug("Telegram bot not initialized, skipping notification")
+		} else {
+			s.logger.Debug("Telegram bot disabled, skipping notification")
+		}
 	}
 
 	return nil
