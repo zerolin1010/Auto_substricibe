@@ -10,6 +10,7 @@ import (
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/jelly"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/mp"
 	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/store"
+	"github.com/yourusername/jellyseerr-moviepilot-syncer/internal/telegram"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +20,7 @@ type Syncer struct {
 	jellyClient *jelly.Client
 	mpClient    *mp.Client
 	store       store.Store
+	telegram    *telegram.Bot
 	logger      *zap.Logger
 }
 
@@ -53,11 +55,21 @@ func NewSyncer(cfg *configs.Config, logger *zap.Logger, ctx context.Context) (*S
 		return nil, fmt.Errorf("unsupported store type: %s", cfg.StoreType)
 	}
 
+	// 创建 Telegram Bot（如果启用）
+	var tgBot *telegram.Bot
+	if cfg.TelegramEnabled {
+		tgBot, err = telegram.NewBot(cfg.TelegramToken, cfg.TelegramChatIDs, logger)
+		if err != nil {
+			logger.Warn("Failed to create telegram bot", zap.Error(err))
+		}
+	}
+
 	return &Syncer{
 		cfg:         cfg,
 		jellyClient: jellyClient,
 		mpClient:    mpClient,
 		store:       st,
+		telegram:    tgBot,
 		logger:      logger,
 	}, nil
 }
@@ -311,6 +323,25 @@ func (s *Syncer) subscribeMovie(ctx context.Context, req *store.Request) error {
 		zap.String("subscribe_id", subscribeID),
 	)
 
+	// 保存到跟踪表
+	now := time.Now()
+	tracking := &store.SubscriptionTracking{
+		SourceRequestID: req.SourceRequestID,
+		TMDBID:          req.TMDBID,
+		Title:           req.Title,
+		MediaType:       req.MediaType,
+		SubscribeStatus: store.TrackingSubscribed,
+		SubscribeTime:   &now,
+	}
+	if err := s.store.SaveTracking(tracking); err != nil {
+		s.logger.Warn("Failed to save tracking", zap.Error(err))
+	}
+
+	// 发送 Telegram 通知
+	if s.telegram != nil && s.telegram.IsEnabled() {
+		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
+	}
+
 	return nil
 }
 
@@ -417,6 +448,25 @@ func (s *Syncer) subscribeTV(ctx context.Context, req *store.Request) error {
 				}
 			}
 		}
+	}
+
+	// 保存到跟踪表
+	now := time.Now()
+	tracking := &store.SubscriptionTracking{
+		SourceRequestID: req.SourceRequestID,
+		TMDBID:          req.TMDBID,
+		Title:           req.Title,
+		MediaType:       req.MediaType,
+		SubscribeStatus: store.TrackingSubscribed,
+		SubscribeTime:   &now,
+	}
+	if err := s.store.SaveTracking(tracking); err != nil {
+		s.logger.Warn("Failed to save tracking", zap.Error(err))
+	}
+
+	// 发送 Telegram 通知
+	if s.telegram != nil && s.telegram.IsEnabled() {
+		s.telegram.NotifySubscribed(req.Title, string(req.MediaType), req.TMDBID)
 	}
 
 	return nil

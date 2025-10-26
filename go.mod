@@ -3,6 +3,7 @@ module github.com/yourusername/jellyseerr-moviepilot-syncer
 go 1.24.0
 
 require (
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/time v0.14.0
 	modernc.org/sqlite v1.39.1

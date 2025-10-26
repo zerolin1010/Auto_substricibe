@@ -36,6 +36,26 @@ type Config struct {
 
 	// 日志配置
 	LogLevel string // debug, info, warn, error
+
+	// Telegram 配置
+	TelegramEnabled bool
+	TelegramToken   string
+	TelegramChatIDs []string // 支持多个 chat ID
+
+	// Tracker 配置
+	TrackerEnabled       bool
+	TrackerCheckInterval int  // 检查间隔（分钟）
+	TrackerSSEEnabled    bool // 是否启用 SSE 监听
+
+	// SmartRetry 配置
+	SmartRetryEnabled      bool
+	SmartRetryMaxAttempts  int // 最大重试次数
+	SmartRetryInitialDelay int // 初始延迟（小时）
+	SmartRetryCheckInterval int // 检查间隔（小时）
+
+	// Reporter 配置
+	ReportEnabled bool
+	ReportTime    string // 每日报告时间，格式 HH:MM
 }
 
 // Load 从环境变量加载配置
@@ -68,6 +88,26 @@ func Load() (*Config, error) {
 
 		// 日志配置
 		LogLevel: getEnv("LOG_LEVEL", "info"),
+
+		// Telegram 配置
+		TelegramEnabled: getEnvAsBool("TELEGRAM_ENABLED", false),
+		TelegramToken:   getEnv("TELEGRAM_BOT_TOKEN", ""),
+		TelegramChatIDs: getEnvAsSlice("TELEGRAM_CHAT_IDS", ",", []string{}),
+
+		// Tracker 配置
+		TrackerEnabled:       getEnvAsBool("TRACKER_ENABLED", true),
+		TrackerCheckInterval: getEnvAsInt("TRACKER_CHECK_INTERVAL", 5),
+		TrackerSSEEnabled:    getEnvAsBool("TRACKER_SSE_ENABLED", true),
+
+		// SmartRetry 配置
+		SmartRetryEnabled:       getEnvAsBool("SMART_RETRY_ENABLED", true),
+		SmartRetryMaxAttempts:   getEnvAsInt("SMART_RETRY_MAX_ATTEMPTS", 3),
+		SmartRetryInitialDelay:  getEnvAsInt("SMART_RETRY_INITIAL_DELAY", 24),
+		SmartRetryCheckInterval: getEnvAsInt("SMART_RETRY_CHECK_INTERVAL", 1),
+
+		// Reporter 配置
+		ReportEnabled: getEnvAsBool("REPORT_ENABLED", true),
+		ReportTime:    getEnv("REPORT_TIME", "09:00"),
 	}
 
 	// 校验必需配置
@@ -193,4 +233,24 @@ func maskString(s string) string {
 		return "****"
 	}
 	return s[:4] + "****" + s[len(s)-4:]
+}
+
+func getEnvAsSlice(key, separator string, defaultValue []string) []string {
+	valueStr := os.Getenv(key)
+	if valueStr == "" {
+		return defaultValue
+	}
+	parts := strings.Split(valueStr, separator)
+	// 去除空白项
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	if len(result) == 0 {
+		return defaultValue
+	}
+	return result
 }
